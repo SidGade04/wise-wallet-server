@@ -18,8 +18,18 @@ from ..models.stripe_models import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Initialize service
-stripe_service = StripeService()
+# Lazy service initialization to prevent import-time errors
+_stripe_service = None
+
+def get_stripe_service():
+    global _stripe_service
+    if _stripe_service is None:
+        try:
+            _stripe_service = StripeService()
+        except Exception as e:
+            logger.error(f"Failed to initialize StripeService: {e}")
+            raise HTTPException(status_code=500, detail="Stripe service not available")
+    return _stripe_service
 
 
 @router.post("/create-checkout-session", response_model=CheckoutSessionResponse)
@@ -31,6 +41,8 @@ async def create_checkout_session(
     try:
         user_id = current_user["user_id"]
         logger.info(f"Creating checkout session for user: {user_id}, plan: {request.plan}")
+        
+        stripe_service = get_stripe_service()
         
         # Get user's profile to get email
         profile = await stripe_service.get_user_profile(user_id)
@@ -66,6 +78,7 @@ async def stripe_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Missing stripe-signature header")
 
     try:
+        stripe_service = get_stripe_service()
         event = stripe_service.verify_webhook_signature(payload, sig_header)
         
         success = False
@@ -93,6 +106,7 @@ async def get_subscription_status(
     """Simple check: is user pro?"""
     try:
         user_id = current_user["user_id"]
+        stripe_service = get_stripe_service()
         result = await stripe_service.get_subscription_status(user_id)
         return SubscriptionStatus(**result)
         
@@ -112,6 +126,7 @@ async def debug_subscription(
         user_id = current_user["user_id"]
         logger.info(f"Debug endpoint called for user: {user_id}")
         
+        stripe_service = get_stripe_service()
         subscription_data = await stripe_service.get_subscription_status(user_id)
         
         debug_info = {
@@ -147,6 +162,7 @@ async def test_webhook_processing(
         if not event_type or not event_data:
             raise HTTPException(status_code=400, detail="event_type and event_data required")
         
+        stripe_service = get_stripe_service()
         result = await stripe_service.debug_webhook_processing(event_type, event_data)
         return result
         
@@ -166,6 +182,7 @@ async def debug_profile(
         user_id = current_user["user_id"]
         logger.info(f"Debug profile endpoint called for user: {user_id}")
         
+        stripe_service = get_stripe_service()
         profile_data = await stripe_service.get_user_profile(user_id)
         
         debug_info = {
@@ -192,6 +209,7 @@ async def cancel_subscription(
         user_id = current_user["user_id"]
         logger.info(f"Cancel subscription request for user: {user_id}")
         
+        stripe_service = get_stripe_service()
         result = await stripe_service.cancel_subscription(user_id, cancel_at_period_end=True)
         return result
         
@@ -209,6 +227,7 @@ async def reactivate_subscription(
         user_id = current_user["user_id"]
         logger.info(f"Reactivate subscription request for user: {user_id}")
         
+        stripe_service = get_stripe_service()
         result = await stripe_service.reactivate_subscription(user_id)
         return result
         
@@ -225,6 +244,7 @@ async def check_expired_subscriptions(
     try:
         logger.info("Manual check for expired subscriptions triggered")
         
+        stripe_service = get_stripe_service()
         expired_count = await stripe_service.check_expired_subscriptions()
         
         return {

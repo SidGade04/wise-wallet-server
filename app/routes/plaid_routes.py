@@ -9,9 +9,18 @@ from ..models.plaid_models import LinkTokenRequest, PublicTokenExchangeRequest
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Initialize service
-plaid_service = PlaidService()
+# Lazy service initialization to prevent import-time errors
+_plaid_service = None
 
+def get_plaid_service():
+    global _plaid_service
+    if _plaid_service is None:
+        try:
+            _plaid_service = PlaidService()
+        except Exception as e:
+            logger.error(f"Failed to initialize PlaidService: {e}")
+            raise HTTPException(status_code=500, detail="Plaid service not available")
+    return _plaid_service
 
 @router.post("/create_link_token")
 async def create_link_token(
@@ -21,6 +30,7 @@ async def create_link_token(
     """Create a link token for Plaid Link initialization."""
     try:
         user_id = current_user["user_id"]
+        plaid_service = get_plaid_service()
         result = await plaid_service.create_link_token(user_id, request.client_name)
         return result
     except Exception as e:
@@ -36,6 +46,7 @@ async def exchange_public_token(
     """Exchange public token for access token and store bank item."""
     try:
         user_id = current_user["user_id"]
+        plaid_service = get_plaid_service()
         result = await plaid_service.exchange_public_token(
             payload.public_token, 
             user_id, 
@@ -55,6 +66,7 @@ async def get_accounts_by_user(
     """Get all accounts for a user."""
     try:
         verify_user_access(current_user["user_id"], user_id)
+        plaid_service = get_plaid_service()
         accounts = await plaid_service.get_user_bank_accounts(user_id)
         return {"accounts": accounts}
     except HTTPException:
@@ -73,6 +85,7 @@ async def get_user_transactions(
     """Get all transactions for a user."""
     try:
         verify_user_access(current_user["user_id"], user_id)
+        plaid_service = get_plaid_service()
         result = await plaid_service.get_user_transactions(user_id, days)
         return result
     except HTTPException:
@@ -90,6 +103,7 @@ async def sync_item_transactions(
     """Manually sync transactions for a specific item."""
     try:
         user_id = current_user["user_id"]
+        plaid_service = get_plaid_service()
         result = await plaid_service.sync_item_transactions(user_id, item_id)
         return result
     except Exception as e:
@@ -105,6 +119,7 @@ async def remove_bank_item(
     """Remove a bank item and all associated data."""
     try:
         user_id = current_user["user_id"]
+        plaid_service = get_plaid_service()
         result = await plaid_service.remove_bank_item(user_id, item_id)
         return result
     except Exception as e:
@@ -131,6 +146,7 @@ async def get_investment_holdings(
     """Get investment holdings for a specific item"""
     try:
         user_id = current_user["user_id"]
+        plaid_service = get_plaid_service()
         return await plaid_service.get_investment_holdings(user_id, item_id)
     except HTTPException:
         raise
@@ -142,12 +158,13 @@ async def get_investment_holdings(
 @router.get("/investments/{item_id}/transactions")
 async def get_investment_transactions(
     item_id: str,
-    days: int = 30,
+    days: int =30,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Get investment transactions for a specific item"""
     try:
         user_id = current_user["user_id"]
+        plaid_service = get_plaid_service()
         return await plaid_service.get_investment_transactions(user_id, item_id, days)
     except HTTPException:
         raise
