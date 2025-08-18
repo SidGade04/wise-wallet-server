@@ -30,15 +30,25 @@ class PlaidService:
         # Plaid configuration
         self.client_id = os.getenv('PLAID_CLIENT_ID')
         self.secret = os.getenv('PLAID_SECRET')
-        self.env = os.getenv('PLAID_ENV', 'production')
+        self.env = os.getenv('PLAID_ENV', 'sandbox')  # Default to sandbox for safety
         
         # Supabase configuration
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
         
-        # Initialize clients
-        self._setup_plaid_client()
-        self._setup_supabase_client()
+        # Check if required environment variables are set
+        if not self.client_id or not self.secret:
+            logger.warning("Plaid credentials not configured - PlaidService will be limited")
+            self.plaid_client = None
+        else:
+            # Initialize clients
+            self._setup_plaid_client()
+        
+        if not self.supabase_url or not self.supabase_key:
+            logger.warning("Supabase credentials not configured - database operations will fail")
+            self.supabase = None
+        else:
+            self._setup_supabase_client()
     
     def _setup_plaid_client(self):
         """Setup Plaid API client."""
@@ -68,6 +78,9 @@ class PlaidService:
     
     async def create_link_token(self, user_id: str, client_name: str = "Plaid Integration App") -> Dict[str, Any]:
         """Create a link token for Plaid Link initialization."""
+        if not self.plaid_client:
+            raise Exception("Plaid client not initialized - check environment variables")
+        
         try:
             request = LinkTokenCreateRequest(
                 products=[Products('transactions'), Products('auth')],

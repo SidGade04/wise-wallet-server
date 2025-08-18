@@ -22,7 +22,12 @@ class StripeService:
     
     def __init__(self):
         # Stripe configuration
-        stripe.api_key = settings.STRIPE_SECRET_KEY
+        stripe_secret_key = settings.STRIPE_SECRET_KEY
+        if not stripe_secret_key:
+            logger.warning("Stripe secret key not configured - StripeService will be limited")
+            stripe.api_key = None
+        else:
+            stripe.api_key = stripe_secret_key
         stripe.api_version = "2024-06-20"
         
         # Supabase configuration
@@ -30,10 +35,11 @@ class StripeService:
         self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")  # Use service role for admin operations
         
         if not self.supabase_url or not self.supabase_key:
-            raise ValueError("Missing Supabase configuration")
-        
-        # Initialize Supabase client with service role key for admin operations
-        self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
+            logger.warning("Supabase configuration not available - database operations will fail")
+            self.supabase = None
+        else:
+            # Initialize Supabase client with service role key for admin operations
+            self.supabase: Client = create_client(self.supabase_url, self.supabase_key)
         
         # Allowed prices (server trust boundary)
         self.allowed_prices = {
@@ -51,6 +57,9 @@ class StripeService:
         user_email: str
     ) -> Dict[str, str]:
         """Create a Stripe checkout session."""
+        if not stripe.api_key:
+            raise Exception("Stripe not configured - check STRIPE_SECRET_KEY environment variable")
+        
         price_id = self.allowed_prices.get(plan)
         if not price_id:
             raise ValueError(f"Invalid plan: {plan}")
