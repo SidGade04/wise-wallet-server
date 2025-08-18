@@ -11,10 +11,5 @@
             "src": "/(.*)",
             "dest": "/api/simple.py"
         }
-    ],
-    "functions": {
-        "api/simple.py": {
-            "runtime": "python3.9"
-        }
-    }
+    ]
 }
