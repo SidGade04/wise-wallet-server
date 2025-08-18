@@ -8,8 +8,13 @@
     ],
     "routes": [
         {
-            "src": "/(.*)",
-            "dest": "/main.py"
+            "src": "/api/(.*)",
+            "dest": "main.py"
         }
-    ]
+    ],
+    "functions": {
+        "main.py": {
+            "runtime": "python3.9"
+        }
+    }
 }

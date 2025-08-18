@@ -63,6 +63,10 @@ async def test_api():
 async def test_plaid():
     return {"message": "Plaid routes are accessible", "status": "success"}
 
+@app.post("/api/plaid/test")
+async def test_plaid_post():
+    return {"message": "Plaid POST routes are accessible", "status": "success"}
+
 @app.get("/favicon.ico")
 async def favicon():
     return {"message": "No favicon"}
@@ -71,9 +75,7 @@ async def favicon():
 async def favicon_png():
     return {"message": "No favicon"}
 
-@app.get("/{path:path}")
-async def catch_all(path: str):
-    return {"message": f"Endpoint /{path} not found", "status": "404"}
+
 
 @app.exception_handler(Exception)
 async def unhandled(request: Request, exc: Exception):
