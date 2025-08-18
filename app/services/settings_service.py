@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Iterable, Dict, Any
 from supabase import create_client, Client
-from app.core.config import settings
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 supabase = create_client(

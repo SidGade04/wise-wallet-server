@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
-from app.core.config import settings
+from ..core.config import settings
 
 load_dotenv()
 logger = logging.getLogger(__name__)

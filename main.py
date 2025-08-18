@@ -1,8 +1,8 @@
 from fastapi import FastAPI
-from app.routes.plaid_routes import router as plaid_router
+from ..app.routes.plaid_routes import router as plaid_router
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes.stripe_routes import router as stripe_router
-from app.routes import settings_routes
+from ..app.routes.stripe_routes import router as stripe_router
+from ..app.routes import settings_routes
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 

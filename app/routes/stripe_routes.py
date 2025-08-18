@@ -7,9 +7,9 @@ import json
 from fastapi import APIRouter, HTTPException, status, Request, Depends
 from typing import Dict, Any
 
-from app.core.auth import get_current_user
-from app.services.stripe_service import StripeService
-from app.models.stripe_models import (
+from ..core.auth import get_current_user
+from ..services.stripe_service import StripeService
+from ..models.stripe_models import (
     CheckoutSessionRequest, 
     CheckoutSessionResponse, 
     SubscriptionStatus

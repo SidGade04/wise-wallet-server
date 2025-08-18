@@ -2,14 +2,14 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from app.core.auth import get_current_user
+from ..core.auth import get_current_user
 
-from app.models.settings_models import (
+from ..models.settings_models import (
     ProfileOut, ProfileUpdate,
     NotificationSettingsUpdate, PreferencesUpdate,
     PortalSessionResponse, SuccessMessage,
 )
-from app.services.settings_service import SettingsService
+from ..services.settings_service import SettingsService
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["settings"])
