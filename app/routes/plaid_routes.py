@@ -171,3 +171,121 @@ async def get_investment_transactions(
     except Exception as e:
         logger.error(f"Error fetching investment transactions: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch investment transactions: {str(e)}")
+
+# Debug endpoints for troubleshooting profile issues
+@router.get("/debug/profile/{user_id}")
+async def debug_user_profile(
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Debug endpoint to check user profile status."""
+    try:
+        # Check if the requesting user is the same as the target user
+        if current_user["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Can only check your own profile")
+        
+        # Get profile from profiles table
+        profile_result = supabase.table("profiles").select("*").eq("user_id", user_id).single().execute()
+        
+        # Get bank items from bank_items table
+        bank_items_result = supabase.table("bank_items").select("*").eq("user_id", user_id).execute()
+        
+        return {
+            "profile": profile_result.data,
+            "bank_items": bank_items_result.data,
+            "profile_has_bank": profile_result.data.get("has_connected_bank") if profile_result.data else None,
+            "bank_items_count": len(bank_items_result.data) if bank_items_result.data else 0
+        }
+    except Exception as e:
+        logger.error(f"Error in debug profile endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
+
+@router.post("/debug/update-profile/{user_id}")
+async def debug_update_profile(
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Debug endpoint to manually update profile has_connected_bank status."""
+    try:
+        # Check if the requesting user is the same as the target user
+        if current_user["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Can only update your own profile")
+        
+        # Update profile to mark bank as connected
+        update_result = supabase.table("profiles").update({
+            "has_connected_bank": True
+        }).eq("user_id", user_id).execute()
+        
+        if not update_result.data:
+            raise HTTPException(status_code=400, detail="Failed to update profile")
+        
+        return {
+            "message": "Profile updated successfully",
+            "updated_profile": update_result.data[0] if update_result.data else None
+        }
+    except Exception as e:
+        logger.error(f"Error in debug update profile endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
+
+@router.post("/debug/create-profile/{user_id}")
+async def debug_create_profile(
+    user_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """Debug endpoint to manually create a profile for a user who doesn't have one."""
+    try:
+        # Check if the requesting user is the same as the target user
+        if current_user["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Can only create your own profile")
+        
+        # Check if profile already exists
+        existing_profile = supabase.table("profiles").select("*").eq("user_id", user_id).execute()
+        
+        if existing_profile.data and len(existing_profile.data) > 0:
+            return {
+                "message": "Profile already exists",
+                "profile": existing_profile.data[0]
+            }
+        
+        # Try to get user info from auth
+        try:
+            user_info = supabase.auth.admin.get_user_by_id(user_id)
+            if user_info.user:
+                profile_data = {
+                    "user_id": user_id,
+                    "email": user_info.user.email,
+                    "full_name": user_info.user.user_metadata.get('full_name') or user_info.user.user_metadata.get('name') or user_info.user.email.split('@')[0],
+                    "has_connected_bank": False
+                }
+            else:
+                # Fallback data
+                profile_data = {
+                    "user_id": user_id,
+                    "email": "unknown@example.com",
+                    "full_name": "Unknown User",
+                    "has_connected_bank": False
+                }
+        except Exception as e:
+            logger.warning(f"Could not get user info: {e}")
+            # Fallback data
+            profile_data = {
+                "user_id": user_id,
+                "email": "unknown@example.com",
+                "full_name": "Unknown User",
+                "has_connected_bank": False
+            }
+        
+        # Create profile
+        result = supabase.table("profiles").insert(profile_data).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=400, detail="Failed to create profile")
+        
+        return {
+            "message": "Profile created successfully",
+            "profile": result.data[0]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in debug create profile endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Create failed: {str(e)}")

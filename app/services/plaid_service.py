@@ -17,6 +17,7 @@ from plaid.exceptions import ApiException
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
+import traceback
 
 load_dotenv()
 
@@ -134,6 +135,59 @@ class PlaidService:
             
             # Store initial transactions
             await self._sync_transactions(response.item_id, response.access_token, user_id)
+            
+            # Update user profile to mark bank as connected
+            try:
+                logger.info(f"Attempting to update profile for user {user_id} - setting has_connected_bank to True")
+                
+                # First check if profile exists
+                profile_check = self.supabase.table("profiles").select("*").eq("user_id", user_id).execute()
+                
+                if not profile_check.data or len(profile_check.data) == 0:
+                    logger.warning(f"Profile does not exist for user {user_id} - creating it now")
+                    
+                    # Get user info from auth.users to create profile
+                    user_info = self.supabase.auth.admin.get_user_by_id(user_id)
+                    if user_info.user:
+                        # Create profile
+                        profile_data = {
+                            "user_id": user_id,
+                            "email": user_info.user.email,
+                            "full_name": user_info.user.user_metadata.get('full_name') or user_info.user.user_metadata.get('name') or user_info.user.email.split('@')[0],
+                            "has_connected_bank": True
+                        }
+                        
+                        create_result = self.supabase.table("profiles").insert(profile_data).execute()
+                        logger.info(f"Profile created successfully: {create_result.data}")
+                    else:
+                        logger.error(f"Could not get user info for {user_id}")
+                        # Try to create with minimal data
+                        profile_data = {
+                            "user_id": user_id,
+                            "email": "unknown@example.com",  # Placeholder
+                            "full_name": "Unknown User",
+                            "has_connected_bank": True
+                        }
+                        create_result = self.supabase.table("profiles").insert(profile_data).execute()
+                        logger.info(f"Profile created with placeholder data: {create_result.data}")
+                else:
+                    # Profile exists, update it
+                    profile_update_result = self.supabase.table("profiles").update({
+                        "has_connected_bank": True
+                    }).eq("user_id", user_id).execute()
+                    
+                    logger.info(f"Profile update result: {profile_update_result}")
+                    
+                    if not profile_update_result.data:
+                        logger.warning(f"Failed to update profile for user {user_id}")
+                    else:
+                        logger.info(f"Successfully updated profile for user {user_id} - bank connection marked as true")
+                        logger.info(f"Updated profile data: {profile_update_result.data}")
+                        
+            except Exception as profile_error:
+                logger.error(f"Error updating profile for user {user_id}: {str(profile_error)}")
+                logger.error(f"Full profile error traceback: {traceback.format_exc()}")
+                # Don't fail the entire operation if profile update fails
             
             return {
                 "access_token": response.access_token,
