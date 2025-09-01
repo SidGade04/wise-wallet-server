@@ -65,6 +65,33 @@ async def exchange_public_token():
         "note": "This is a fallback endpoint - full functionality requires proper route loading"
     }
 
+# Essential Stripe endpoints
+@app.get("/api/stripe/subscription/status")
+async def get_subscription_status():
+    """Get user subscription status."""
+    return {
+        "message": "Subscription status endpoint working",
+        "is_pro": False,
+        "subscription_status": "inactive",
+        "note": "This is a fallback endpoint - full functionality requires proper route loading"
+    }
+
+@app.post("/api/stripe/create-checkout-session")
+async def create_checkout_session():
+    """Create Stripe checkout session."""
+    return {
+        "message": "Create checkout session endpoint working",
+        "note": "This is a fallback endpoint - full functionality requires proper route loading"
+    }
+
+@app.get("/api/stripe/webhook")
+async def stripe_webhook():
+    """Stripe webhook endpoint."""
+    return {
+        "message": "Stripe webhook endpoint working",
+        "note": "This is a fallback endpoint - full functionality requires proper route loading"
+    }
+
 # Test endpoints
 @app.get("/api/test")
 async def test_api():
@@ -77,13 +104,20 @@ async def test_plaid():
 @app.get("/api/plaid/route-test")
 async def test_plaid_route():
     return {
-        "message": "Plaid endpoints working (fallback mode)",
-        "available_routes": [
-            "/api/plaid/accounts/user/{user_id}",
-            "/api/plaid/user_transactions/{user_id}",
-            "/api/plaid/create_link_token",
-            "/api/plaid/exchange_public_token"
-        ],
+        "message": "All endpoints working (fallback mode)",
+        "available_routes": {
+            "plaid": [
+                "/api/plaid/accounts/user/{user_id}",
+                "/api/plaid/user_transactions/{user_id}",
+                "/api/plaid/create_link_token",
+                "/api/plaid/exchange_public_token"
+            ],
+            "stripe": [
+                "/api/stripe/subscription/status",
+                "/api/stripe/create-checkout-session",
+                "/api/stripe/webhook"
+            ]
+        },
         "note": "These are fallback endpoints - full functionality requires proper route loading"
     }
 
