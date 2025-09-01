@@ -29,8 +29,24 @@ try:
     app.include_router(settings_routes.router)
     
     logger.info("✅ All routes loaded successfully")
+    
+    # Add a test endpoint to verify the route is working
+    @app.get("/api/plaid/route-test")
+    async def test_plaid_route():
+        return {
+            "message": "Plaid routes loaded successfully",
+            "available_routes": [
+                "/api/plaid/accounts/user/{user_id}",
+                "/api/plaid/user_transactions/{user_id}",
+                "/api/plaid/create_link_token",
+                "/api/plaid/exchange_public_token"
+            ]
+        }
+        
 except Exception as e:
     logger.error(f"⚠️ Warning: Some routes failed to load: {str(e)}")
+    logger.error(f"Full error details: {type(e).__name__}: {str(e)}")
+    
     # Add fallback routes for when services are not available
     from fastapi import APIRouter
     
@@ -38,11 +54,11 @@ except Exception as e:
     
     @fallback_router.get("/api/plaid/status")
     async def plaid_status():
-        return {"message": "Plaid service not available", "error": str(e)}
+        return {"message": "Plaid service not available", "error": str(e), "error_type": type(e).__name__}
     
     @fallback_router.get("/api/stripe/status")
     async def stripe_status():
-        return {"message": "Stripe service not available", "error": str(e)}
+        return {"message": "Stripe service not available", "error": str(e), "error_type": type(e).__name__}
     
     app.include_router(fallback_router)
 
