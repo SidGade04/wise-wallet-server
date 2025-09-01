@@ -49,7 +49,7 @@ async def get_user_transactions(user_id: str, days: int = 30):
         "note": "This is a fallback endpoint - full functionality requires proper route loading"
     }
 
-@app.get("/api/plaid/create_link_token")
+@app.post("/api/plaid/create_link_token")
 async def create_link_token():
     """Create a link token for Plaid Link initialization."""
     return {
