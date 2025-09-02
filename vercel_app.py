@@ -43,70 +43,7 @@ async def root():
 async def health():
     return {"ok": True}
 
-# Fallback endpoints (only used when real routes fail to load)
-if not routes_loaded:
-    @app.get("/api/plaid/accounts/user/{user_id}")
-    async def get_user_accounts(user_id: str):
-        """Get all accounts for a user."""
-        return {
-            "message": "Accounts endpoint working (fallback mode)",
-            "user_id": user_id,
-            "accounts": [],
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
-
-    @app.get("/api/plaid/user_transactions/{user_id}")
-    async def get_user_transactions(user_id: str, days: int = 30):
-        """Get all transactions for a user."""
-        return {
-            "message": "Transactions endpoint working (fallback mode)",
-            "user_id": user_id,
-            "days": days,
-            "transactions": [],
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
-
-    @app.post("/api/plaid/create_link_token")
-    async def create_link_token():
-        """Create a link token for Plaid Link initialization."""
-        return {
-            "message": "Create link token endpoint working (fallback mode)",
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
-
-    @app.post("/api/plaid/exchange_public_token")
-    async def exchange_public_token():
-        """Exchange public token for access token."""
-        return {
-            "message": "Exchange public token endpoint working (fallback mode)",
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
-
-    @app.get("/api/stripe/subscription/status")
-    async def get_subscription_status():
-        """Get user subscription status."""
-        return {
-            "message": "Subscription status endpoint working (fallback mode)",
-            "is_pro": False,
-            "subscription_status": "inactive",
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
-
-    @app.post("/api/stripe/create-checkout-session")
-    async def create_checkout_session():
-        """Create Stripe checkout session."""
-        return {
-            "message": "Create checkout session endpoint working (fallback mode)",
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
-
-    @app.get("/api/stripe/webhook")
-    async def stripe_webhook():
-        """Stripe webhook endpoint."""
-        return {
-            "message": "Stripe webhook endpoint working (fallback mode)",
-            "note": "This is a fallback endpoint - full functionality requires proper route loading"
-        }
+# No fallback routes - we want to see if real routes work
 
 # Test endpoints
 @app.get("/api/test")
@@ -115,7 +52,7 @@ async def test_api():
         "message": "API is working", 
         "status": "success",
         "routes_loaded": routes_loaded,
-        "mode": "full_functionality" if routes_loaded else "fallback_mode"
+        "mode": "full_functionality" if routes_loaded else "routes_failed"
     }
 
 @app.get("/api/plaid/test")
@@ -132,22 +69,9 @@ async def test_plaid_route():
         }
     else:
         return {
-            "message": "⚠️ Using fallback endpoints",
-            "status": "fallback_mode",
-            "available_routes": {
-                "plaid": [
-                    "/api/plaid/accounts/user/{user_id}",
-                    "/api/plaid/user_transactions/{user_id}",
-                    "/api/plaid/create_link_token",
-                    "/api/plaid/exchange_public_token"
-                ],
-                "stripe": [
-                    "/api/stripe/subscription/status",
-                    "/api/stripe/create-checkout-session",
-                    "/api/stripe/webhook"
-                ]
-            },
-            "note": "These are fallback endpoints - full functionality requires proper route loading"
+            "message": "❌ Real routes failed to load",
+            "status": "routes_failed",
+            "note": "No endpoints available - routes failed to import"
         }
 
 # Error handling
