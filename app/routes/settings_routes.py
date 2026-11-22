@@ -28,6 +28,16 @@ def get_settings_service():
     return _settings_service
 
 # ---------- Profile ----------
+@router.get("/profile", response_model=ProfileOut)
+async def get_profile(current_user=Depends(get_current_user)):
+    try:
+        svc = get_settings_service()
+        data = await svc.get_profile(current_user["user_id"])
+        return ProfileOut(id=str(data["id"]), email=data["email"], full_name=data.get("full_name"))
+    except Exception as e:
+        logger.error(f"Failed to get profile for user {current_user.get('user_id')}: {str(e)}")
+        raise HTTPException(status_code=404, detail=str(e))
+
 @router.put("/profile", response_model=ProfileOut)
 async def update_profile(body: ProfileUpdate, current_user=Depends(get_current_user)):
     try:
@@ -72,7 +82,7 @@ async def get_preferences(current_user=Depends(get_current_user)):
         logger.error(f"Failed to get preferences for user {current_user.get('user_id')}: {str(e)}")
         raise HTTPException(status_code=404, detail=str(e))
 
-@router.put("/api/settings/preferences", response_model=PreferencesUpdate)
+@router.put("/settings/preferences", response_model=PreferencesUpdate)
 async def update_preferences(body: PreferencesUpdate, current_user=Depends(get_current_user)):
     try:
         svc = get_settings_service()

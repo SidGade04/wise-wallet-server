@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from plaid.api import plaid_api
 from plaid.model.transactions_get_request import TransactionsGetRequest
+from plaid.model.transactions_get_request_options import TransactionsGetRequestOptions
 from plaid.model.accounts_get_request import AccountsGetRequest
 from plaid.model.item_public_token_exchange_request import ItemPublicTokenExchangeRequest
 from plaid.model.link_token_create_request import LinkTokenCreateRequest
@@ -24,6 +25,17 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def _jsonable(value):
+    """Plaid SDK enums are not JSON-serializable."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    if hasattr(value, "value"):
+        return _jsonable(value.value)
+    return str(value)
+
+
 class PlaidService:
     """Service class for Plaid operations."""
     
@@ -35,7 +47,7 @@ class PlaidService:
         
         # Supabase configuration
         self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
+        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_PUBLISHABLE_KEY")
         
         # Check if required environment variables are set
         if not self.client_id or not self.secret:
@@ -250,9 +262,9 @@ class PlaidService:
                     "date": txn.date.isoformat(),
                     "name": txn.name,
                     "merchant_name": txn.merchant_name,
-                    "category": txn.category or [],
-                    "category_id": txn.category_id,
-                    "payment_channel": txn.payment_channel,
+                    "category": _jsonable(txn.category) or [],
+                    "category_id": _jsonable(txn.category_id),
+                    "payment_channel": _jsonable(txn.payment_channel),
                     "pending": txn.pending,
                     "currency_code": txn.iso_currency_code or 'USD',
                     "created_at": datetime.utcnow().isoformat()
@@ -286,6 +298,78 @@ class PlaidService:
             
             raise
     
+    def _note_item_error(self, item_id: str, user_id: str, exc: Exception):
+        message = str(exc)
+        if "ITEM_LOGIN_REQUIRED" in message:
+            try:
+                self.supabase.table("bank_items").update({
+                    "status": "error",
+                    "error_message": "ITEM_LOGIN_REQUIRED",
+                }).eq("item_id", item_id).eq("user_id", user_id).execute()
+            except Exception:
+                pass
+            logger.warning(f"Item {item_id} needs reconnect")
+            return
+        logger.warning(f"Plaid item {item_id} failed: {message[:240]}")
+
+    def _accounts_from_db(self, user_id: str) -> List[Dict[str, Any]]:
+        items = {
+            row["item_id"]: row
+            for row in (self.supabase.table("bank_items").select(
+                "item_id,institution_name,last_synced_at,status"
+            ).eq("user_id", user_id).execute().data or [])
+        }
+        rows = self.supabase.table("accounts").select("*").eq("user_id", user_id).execute().data or []
+        accounts = []
+        for account in rows:
+            item = items.get(account.get("item_id"), {})
+            accounts.append({
+                "account_id": account.get("account_id"),
+                "item_id": account.get("item_id"),
+                "institution_name": item.get("institution_name", "Unknown"),
+                "name": account.get("name"),
+                "type": account.get("type"),
+                "subtype": account.get("subtype"),
+                "balance": float(account.get("balance_current") or 0),
+                "last_synced_at": item.get("last_synced_at"),
+                "status": item.get("status", "stored"),
+            })
+        return accounts
+
+    def _transactions_from_db(self, user_id: str, days: int) -> List[Dict[str, Any]]:
+        start = (datetime.now() - timedelta(days=days)).date().isoformat()
+        query = self.supabase.table("transactions").select("*").eq("user_id", user_id).gte("date", start)
+        rows = query.execute().data or []
+        if not rows:
+            rows = (
+                self.supabase.table("transactions")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("date", desc=True)
+                .limit(200)
+                .execute()
+                .data
+                or []
+            )
+        out = []
+        for row in rows:
+            category = row.get("category") or []
+            if isinstance(category, str):
+                category = [category]
+            out.append({
+                "transaction_id": row.get("transaction_id"),
+                "account_id": row.get("account_id"),
+                "amount": float(row.get("amount") or 0),
+                "date": row.get("date"),
+                "name": row.get("name"),
+                "category": category,
+                "merchant_name": row.get("merchant_name"),
+                "pending": bool(row.get("pending")),
+                "payment_channel": row.get("payment_channel"),
+                "iso_currency_code": row.get("currency_code"),
+            })
+        return out
+
     async def get_user_bank_accounts(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all bank accounts for a user."""
         try:
@@ -294,6 +378,8 @@ class PlaidService:
             
             all_accounts = []
             for item in items:
+                if item.get("status") == "error" or not item.get("access_token"):
+                    continue
                 try:
                     access_token = item["access_token"]
                     accounts_request = AccountsGetRequest(access_token=access_token)
@@ -312,9 +398,20 @@ class PlaidService:
                             "status": item.get("status", "unknown")
                         })
                 except Exception as e:
-                    logger.warning(f"Could not fetch accounts for item {item['item_id']}: {str(e)}")
+                    self._note_item_error(item["item_id"], user_id, e)
                     continue
+
+            if not all_accounts:
+                all_accounts = self._accounts_from_db(user_id)
             
+            if all_accounts:
+                try:
+                    self.supabase.table("profiles").update(
+                        {"has_connected_bank": True}
+                    ).eq("user_id", user_id).execute()
+                except Exception as profile_error:
+                    logger.warning(f"Could not mark bank connected for {user_id}: {profile_error}")
+
             return all_accounts
             
         except Exception as e:
@@ -328,43 +425,52 @@ class PlaidService:
             items = result.data or []
             
             all_transactions = []
+            seen = set()
             for item in items:
+                if item.get("status") == "error" or not item.get("access_token"):
+                    continue
                 try:
                     access_token = item["access_token"]
                     start_date = (datetime.now() - timedelta(days=days)).date()
                     end_date = datetime.now().date()
-                    
-                    transactions_request = TransactionsGetRequest(
-                        access_token=access_token,
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-                    
-                    response = self.plaid_client.transactions_get(transactions_request)
-                    
-                    for txn in response.transactions:
-                        all_transactions.append({
-                            "transaction_id": txn.transaction_id,
-                            "account_id": txn.account_id,
-                            "amount": float(txn.amount),
-                            "date": txn.date.isoformat(),
-                            "name": txn.name,
-                            "category": txn.category or [],
-                            "merchant_name": txn.merchant_name,
-                            "pending": txn.pending,
-                            "payment_channel": txn.payment_channel,
-                            "iso_currency_code": txn.iso_currency_code,
-                        })
+                    offset = 0
+
+                    while offset < 500:
+                        transactions_request = TransactionsGetRequest(
+                            access_token=access_token,
+                            start_date=start_date,
+                            end_date=end_date,
+                            options=TransactionsGetRequestOptions(count=100, offset=offset),
+                        )
+                        response = self.plaid_client.transactions_get(transactions_request)
+                        batch = response.transactions or []
+                        for txn in batch:
+                            if txn.transaction_id in seen:
+                                continue
+                            seen.add(txn.transaction_id)
+                            all_transactions.append({
+                                "transaction_id": txn.transaction_id,
+                                "account_id": txn.account_id,
+                                "amount": float(txn.amount),
+                                "date": txn.date.isoformat(),
+                                "name": txn.name,
+                                "category": _jsonable(txn.category) or [],
+                                "merchant_name": txn.merchant_name,
+                                "pending": bool(txn.pending),
+                                "payment_channel": _jsonable(txn.payment_channel),
+                                "iso_currency_code": txn.iso_currency_code,
+                            })
+                        offset += len(batch)
+                        total = getattr(response, "total_transactions", offset) or offset
+                        if not batch or offset >= total:
+                            break
                         
-                except ApiException as e:
-                    if "PRODUCT_NOT_READY" in str(e.body):
-                        logger.warning(f"Transactions not ready for item {item['item_id']}")
-                        continue
-                    logger.error(f"Error fetching transactions for item {item['item_id']}: {e}")
-                    continue
                 except Exception as e:
-                    logger.error(f"Unexpected error for item {item['item_id']}: {e}")
+                    self._note_item_error(item["item_id"], user_id, e)
                     continue
+
+            if not all_transactions:
+                all_transactions = self._transactions_from_db(user_id, days)
             
             return {
                 "transactions": all_transactions,

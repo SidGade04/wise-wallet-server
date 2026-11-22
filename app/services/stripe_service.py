@@ -26,8 +26,10 @@ class StripeService:
         if not stripe_secret_key:
             logger.warning("Stripe secret key not configured - StripeService will be limited")
             stripe.api_key = None
+            self.is_configured = False
         else:
             stripe.api_key = stripe_secret_key
+            self.is_configured = True
         stripe.api_version = "2024-06-20"
         
         # Supabase configuration
@@ -263,6 +265,11 @@ class StripeService:
         """Get subscription status with period end validation."""
         try:
             logger.info(f"🔍 Checking subscription status for user: {user_id}")
+            
+            # If Stripe is not configured, return default status
+            if not self.is_configured:
+                logger.warning("Stripe not configured - returning default subscription status")
+                return {"is_pro": False, "cancel_at_period_end": False}
             
             result = (
                 self.supabase.table('profiles')

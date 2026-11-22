@@ -12,7 +12,12 @@ app = FastAPI(title="Plaid Integration API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # use specific domains in prod
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,12 +26,13 @@ app.add_middleware(
 # Try to import and initialize routes with error handling
 try:
     # Import route modules without initializing services
-    from app.routes import plaid_routes, stripe_routes, settings_routes
+    from app.routes import plaid_routes, stripe_routes, settings_routes, internal_ai
     
     # API groups
     app.include_router(plaid_routes.router, prefix="/api/plaid", tags=["plaid"])
     app.include_router(stripe_routes.router, prefix="/api/stripe", tags=["stripe"])
     app.include_router(settings_routes.router)
+    app.include_router(internal_ai.router)
     
     logger.info("✅ All routes loaded successfully")
 except Exception as e:

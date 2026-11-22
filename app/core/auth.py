@@ -65,3 +65,35 @@ def verify_user_access(current_user_id: str, requested_user_id: str):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: Can only access your own data"
         )
+
+
+def verify_internal_token(authorization: str = Depends(HTTPBearer())) -> bool:
+    """Verify internal service token for AI service communication."""
+    try:
+        token = authorization.credentials
+        expected_token = os.getenv("INTERNAL_AI_BEARER")
+        
+        if not expected_token:
+            logger.error("INTERNAL_AI_BEARER environment variable not set")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal service configuration error"
+            )
+        
+        if token != expected_token:
+            logger.warning("Invalid internal token provided")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid internal service token"
+            )
+        
+        return True
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Internal token verification error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate internal credentials"
+        )

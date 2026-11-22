@@ -1,5 +1,6 @@
 # settings_service.py - Updated with GET methods
 import os
+from datetime import datetime
 import io
 import csv
 import zipfile
@@ -39,7 +40,7 @@ class SettingsService:
         try:
             res = self.db.table("profiles").select(
                 "id,email,full_name,notif_email_weekly,notif_inapp_alerts,pref_theme,pref_currency,pref_timezone"
-            ).eq("id", user_id).single().execute()
+            ).eq("user_id", user_id).single().execute()
             
             if not res.data:
                 raise ValueError("Profile not found")
@@ -59,7 +60,7 @@ class SettingsService:
                 "full_name": full_name, 
                 "email": email,
                 "updated_at": "now()"
-            }).eq("id", user_id).execute()
+            }).eq("user_id", user_id).execute()
             
             if not res.data:
                 raise ValueError("Profile update failed - no rows updated")
@@ -76,7 +77,7 @@ class SettingsService:
         try:
             res = self.db.table("profiles").select(
                 "notif_email_weekly,notif_inapp_alerts"
-            ).eq("id", user_id).single().execute()
+            ).eq("user_id", user_id).single().execute()
             
             if not res.data:
                 raise ValueError("User not found")
@@ -95,7 +96,7 @@ class SettingsService:
                 "notif_email_weekly": email_weekly,
                 "notif_inapp_alerts": in_app_alerts,
                 "updated_at": "now()"
-            }).eq("id", user_id).execute()
+            }).eq("user_id", user_id).execute()
             
             if not res.data:
                 raise ValueError("Notification update failed - no rows updated")
@@ -169,7 +170,7 @@ class SettingsService:
         try:
             # Try to fetch stripe_customer_id from profiles
             try:
-                row = self.db.table("profiles").select("stripe_customer_id").eq("id", user_id).single().execute().data
+                row = self.db.table("profiles").select("stripe_customer_id").eq("user_id", user_id).single().execute().data
                 customer_id = row and row.get("stripe_customer_id") if row else None
             except Exception as e:
                 logger.warning(f"Could not fetch stripe_customer_id for user {user_id}: {str(e)}")
@@ -220,7 +221,7 @@ class SettingsService:
             # Helper function to safely query tables
             def safe_table_query(table_name: str):
                 try:
-                    result = self.supabase.table(table_name).select('*').eq('user_id', user_id).execute()
+                    result = self.db.table(table_name).select('*').eq('user_id', user_id).execute()
                     return result.data or []
                 except Exception as e:
                     logger.warning(f"Table {table_name} not accessible: {str(e)}")
@@ -338,7 +339,7 @@ class SettingsService:
             self.db.table("investments").delete().eq("user_id", user_id).execute()
             
             # Delete profile last
-            profile_result = self.db.table("profiles").delete().eq("id", user_id).execute()
+            profile_result = self.db.table("profiles").delete().eq("user_id", user_id).execute()
             
             # Optional: remove auth user (if client supports admin)
             try:
