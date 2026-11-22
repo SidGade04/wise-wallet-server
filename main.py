@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.requests import Request
 import logging
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -10,14 +11,19 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Plaid Integration API", version="1.0.0")
 
+allow_origins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "https://lemon-grass-096d3860f.6.azurestaticapps.net",
+]
+allow_origins += [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
