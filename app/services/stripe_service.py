@@ -17,6 +17,17 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
+def _as_dict(obj: Any) -> Dict[str, Any]:
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    to_dict = getattr(obj, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    return dict(obj)
+
+
 class StripeService:
     """Enhanced service class for Stripe operations."""
     
@@ -87,14 +98,14 @@ class StripeService:
         email = profile.get("email")
         try:
             if sub_id:
-                retrieved = stripe.Subscription.retrieve(sub_id)
+                retrieved = _as_dict(stripe.Subscription.retrieve(sub_id))
                 if retrieved and retrieved.get("status") in ("active", "trialing"):
                     sub = retrieved
                     customer_id = customer_id or retrieved.get("customer")
             if sub is None and customer_id:
                 listed = stripe.Subscription.list(customer=customer_id, status="active", limit=1)
                 if listed.data:
-                    sub = listed.data[0]
+                    sub = _as_dict(listed.data[0])
             if sub is None:
                 if not email:
                     try:
@@ -106,7 +117,7 @@ class StripeService:
                     for customer in stripe.Customer.list(email=email, limit=5).data:
                         listed = stripe.Subscription.list(customer=customer.id, status="active", limit=1)
                         if listed.data:
-                            sub = listed.data[0]
+                            sub = _as_dict(listed.data[0])
                             customer_id = customer.id
                             break
         except Exception as e:
@@ -114,6 +125,7 @@ class StripeService:
             return None
         if not sub:
             return None
+        sub = _as_dict(sub)
         update_data = {
             "is_pro": True,
             "stripe_customer_id": customer_id or sub.get("customer"),
@@ -198,8 +210,9 @@ class StripeService:
     async def handle_checkout_completed(self, session: Dict[str, Any]) -> bool:
         """Enhanced payment success handling with comprehensive logging."""
         try:
+            session = _as_dict(session)
             session_id = session.get('id')
-            metadata = session.get('metadata', {})
+            metadata = _as_dict(session.get('metadata'))
             user_id = metadata.get('user_id')
             user_email = metadata.get('user_email')
             plan = metadata.get('plan')
@@ -254,12 +267,12 @@ class StripeService:
             return False
 
     async def confirm_checkout_session(self, user_id: str, session_id: str) -> Dict[str, Any]:
-        session = stripe.checkout.Session.retrieve(session_id)
+        session = _as_dict(stripe.checkout.Session.retrieve(session_id))
         status = session.get("status")
         payment_status = session.get("payment_status")
         if status != "complete" and payment_status not in ("paid", "no_payment_required"):
             raise ValueError("Checkout session is not complete")
-        metadata = session.get("metadata") or {}
+        metadata = _as_dict(session.get("metadata"))
         if str(metadata.get("user_id") or "") != str(user_id):
             raise ValueError("Checkout session does not belong to this user")
         if not await self.handle_checkout_completed(session):
@@ -488,7 +501,7 @@ class StripeService:
                 subscription = stripe.Subscription.cancel(subscription_id)
                 logger.info(f"✅ Subscription {subscription_id} canceled immediately")
             
-            # Update database
+            subscription = _as_dict(subscription)
             update_data = {
                 'subscription_status': subscription['status'],
                 'cancel_at_period_end': subscription.get('cancel_at_period_end', False),
