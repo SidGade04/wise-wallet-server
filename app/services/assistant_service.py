@@ -28,7 +28,15 @@ How to answer:
 - Then 2–4 specific actions. Each action names a category or merchant and a dollar amount. Prefer "skip 4 of the 11 Uber Eats orders (~$86/mo)" over "eat out less".
 - Tie advice to their cash flow: income vs spend, leftover, biggest categories, repeating merchants.
 - End with one short question that moves the plan forward.
-- Keep it under ~180 words unless they asked for detail.
+- Keep it under ~120 words unless they asked for detail.
+
+Format — this matters most:
+- Write in short conversational paragraphs, like a text from a smart friend. Not a report.
+- NEVER list every category, account, or balance. Never echo the summary back. Pick the 2–3 things that actually matter and ignore the rest.
+- Max ~3 dollar figures per paragraph. Round numbers ($1.1k, ~$500) unless precision matters.
+- Bullets only for the action steps, max 3, one line each. No nested bullets. No headers.
+- Broad questions ("insights", "how am I doing", "overview") get: one-line verdict, the biggest issue, the biggest win, one next step. Not a data dump.
+- Transfers and credit-card/loan payments are money moving, not spending. Don't call them spend.
 - Never mention Plaid, JSON, imports, APIs, "your data", or that you analyzed anything. Talk about their money as if you already know it. No "based on your transactions" throat-clearing.
 
 Grounding:
@@ -44,12 +52,23 @@ Never say you "cannot provide financial advice" or that your job is only to anal
 
 Bad: "Based on your imported Plaid data, here's an analysis of your spending patterns:"
 Good: "Food is $420 of $1,800 spend (23%). Cutting the $64/wk on DoorDash to twice a month frees ~$170/mo. Want that as a grocery cap or a transfer-to-savings rule?"
+
+Bad (for "What are my financial insights?"): a bulleted list of total spend, total income, every category, and every account balance.
+Good (for "What are my financial insights?"): "Honestly, spending is running well ahead of income right now — about $2.2k out vs $500 in over the last few months, so savings are covering the gap. The biggest lever is food and drink at ~$1.1k; that's where I'd start. On the bright side, you've got a solid ~$62k cushion in cash, so this is fixable, not urgent.
+
+- Cap dining out at ~$250/mo — frees roughly $120/mo
+- Look at the $500 in shopping and see what was one-off
+
+Want me to sketch a monthly budget around your income?"
 """
+
+NON_SPEND_CATEGORIES = {"Transfer", "Payment"}
 
 
 def summarize_transactions(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
     spend = 0.0
     income = 0.0
+    moved_out = 0.0
     by_category: Dict[str, float] = {}
     by_merchant: Dict[str, float] = {}
     for tx in transactions:
@@ -57,7 +76,9 @@ def summarize_transactions(transactions: List[Dict[str, Any]]) -> Dict[str, Any]
         cat = tx.get("category") or ["Other"]
         primary = cat[0] if isinstance(cat, list) and cat else str(cat or "Other")
         merchant = tx.get("merchant_name") or tx.get("name") or "Unknown"
-        if amt > 0:
+        if amt > 0 and primary in NON_SPEND_CATEGORIES:
+            moved_out += amt
+        elif amt > 0:
             spend += amt
             by_category[primary] = by_category.get(primary, 0.0) + amt
             by_merchant[merchant] = by_merchant.get(merchant, 0.0) + amt
@@ -68,6 +89,7 @@ def summarize_transactions(transactions: List[Dict[str, Any]]) -> Dict[str, Any]
         "transaction_count": len(transactions),
         "total_spend": round(spend, 2),
         "total_income": round(income, 2),
+        "transfers_and_payments_out": round(moved_out, 2),
         "leftover": leftover,
         "savings_rate_pct": round((leftover / income) * 100, 1) if income else None,
         "by_category": {k: round(v, 2) for k, v in sorted(by_category.items(), key=lambda x: -x[1])[:12]},
@@ -213,6 +235,8 @@ def _self_check() -> None:
     assert summary["leftover"] == 47.5, summary
     assert summary["by_category"]["Food"] == 52.5, summary
     assert summary["top_merchants"]["Diner"] == 40.0, summary
+    moved = summarize_transactions(txs + [{"amount": 500.0, "category": ["Transfer"]}])
+    assert moved["total_spend"] == 52.5 and moved["transfers_and_payments_out"] == 500.0, moved
     kb = build_plaid_kb([{"account_id": "a1", "balance": 10}], txs)
     raw = serialize_kb(kb)
     parsed = json.loads(raw)
