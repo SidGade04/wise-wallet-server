@@ -51,14 +51,14 @@ def _load_settings():
     from app.routes import settings_routes
     app.include_router(settings_routes.router)
 
-def _load_internal_ai():
-    from app.routes import internal_ai
-    app.include_router(internal_ai.router)
+def _load_assistant():
+    from app.routes import assistant_routes
+    app.include_router(assistant_routes.router, prefix="/api/assistant", tags=["assistant"])
 
 _load_router("plaid", _load_plaid)
 _load_router("stripe", _load_stripe)
 _load_router("settings", _load_settings)
-_load_router("internal_ai", _load_internal_ai)
+_load_router("assistant", _load_assistant)
 
 # Root endpoint
 @app.get("/")

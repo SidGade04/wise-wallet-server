@@ -1,7 +1,7 @@
 # app/core/config.py
 from __future__ import annotations
 from typing import Literal, Optional
-from pydantic import AnyUrl, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
 
@@ -14,11 +14,8 @@ class Settings(BaseSettings):
     # Database (Supabase/Postgres via SQLAlchemy async)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")  # e.g. postgresql+asyncpg://user:pass@host:5432/db
 
-    # LLM server (your gpt-oss-20b FastAPI endpoint)
-    LLM_URL: str | AnyUrl = os.getenv("LLM_URL", "http://localhost:8001/generate")
-
-    # Safety toggle for the assistant
-    ENABLE_SAFETY: bool = True
+    GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
     # Plaid (optional during local dev)
     PLAID_CLIENT_ID: Optional[str] = os.getenv("PLAID_CLIENT_ID")

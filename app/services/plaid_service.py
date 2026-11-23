@@ -336,6 +336,15 @@ class PlaidService:
             })
         return accounts
 
+    def get_imported_data(self, user_id: str, days: int = 90) -> Dict[str, Any]:
+        """Plaid JSON already stored in Supabase for this user. No live Plaid call."""
+        if not self.supabase:
+            raise RuntimeError("Supabase is not configured")
+        return {
+            "accounts": self._accounts_from_db(user_id),
+            "transactions": self._transactions_from_db(user_id, days),
+        }
+
     def _transactions_from_db(self, user_id: str, days: int) -> List[Dict[str, Any]]:
         start = (datetime.now() - timedelta(days=days)).date().isoformat()
         query = self.supabase.table("transactions").select("*").eq("user_id", user_id).gte("date", start)
