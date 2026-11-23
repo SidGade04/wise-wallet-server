@@ -152,23 +152,21 @@ def _gemini(contents: List[Dict[str, Any]]) -> str:
     key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not key:
         raise RuntimeError("GEMINI_API_KEY is not set")
-    body = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-        "contents": contents,
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 1024,
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
-    }
     # ponytail: fixed retry schedule then fallback model; swap for a real backoff lib if traffic grows.
     attempts = [os.getenv("GEMINI_MODEL", DEFAULT_MODEL)] * 2 + [FALLBACK_MODEL]
     for i, model in enumerate(attempts):
+        gen_config: Dict[str, Any] = {"temperature": 0.7, "maxOutputTokens": 4096}
+        if model.startswith("gemini-2.5"):
+            gen_config["thinkingConfig"] = {"thinkingBudget": 0}
         response = httpx.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             headers={"x-goog-api-key": key},
-            json=body,
-            timeout=60.0,
+            json={
+                "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+                "contents": contents,
+                "generationConfig": gen_config,
+            },
+            timeout=45.0,
         )
         if response.status_code not in RETRY_STATUSES or i == len(attempts) - 1:
             break
