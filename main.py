@@ -29,34 +29,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Try to import and initialize routes with error handling
-try:
-    # Import route modules without initializing services
-    from app.routes import plaid_routes, stripe_routes, settings_routes, internal_ai
-    
-    # API groups
+route_load_errors: list[str] = []
+
+def _load_router(name: str, loader) -> None:
+    try:
+        loader()
+        logger.info("loaded router %s", name)
+    except Exception as e:
+        logger.exception("failed to load router %s", name)
+        route_load_errors.append(f"{name}: {type(e).__name__}: {e}")
+
+def _load_plaid():
+    from app.routes import plaid_routes
     app.include_router(plaid_routes.router, prefix="/api/plaid", tags=["plaid"])
+
+def _load_stripe():
+    from app.routes import stripe_routes
     app.include_router(stripe_routes.router, prefix="/api/stripe", tags=["stripe"])
+
+def _load_settings():
+    from app.routes import settings_routes
     app.include_router(settings_routes.router)
+
+def _load_internal_ai():
+    from app.routes import internal_ai
     app.include_router(internal_ai.router)
-    
-    logger.info("✅ All routes loaded successfully")
-except Exception as e:
-    logger.error(f"⚠️ Warning: Some routes failed to load: {str(e)}")
-    # Add fallback routes for when services are not available
-    from fastapi import APIRouter
-    
-    fallback_router = APIRouter()
-    
-    @fallback_router.get("/api/plaid/status")
-    async def plaid_status():
-        return {"message": "Plaid service not available", "error": str(e)}
-    
-    @fallback_router.get("/api/stripe/status")
-    async def stripe_status():
-        return {"message": "Stripe service not available", "error": str(e)}
-    
-    app.include_router(fallback_router)
+
+_load_router("plaid", _load_plaid)
+_load_router("stripe", _load_stripe)
+_load_router("settings", _load_settings)
+_load_router("internal_ai", _load_internal_ai)
 
 # Root endpoint
 @app.get("/")
@@ -65,7 +67,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"ok": True}
+    return {"ok": True, "route_errors": route_load_errors}
 
 @app.get("/api/test")
 async def test_api():
