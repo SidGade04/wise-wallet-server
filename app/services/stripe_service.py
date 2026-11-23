@@ -51,6 +51,89 @@ class StripeService:
         
         self.enable_automatic_tax = os.getenv("STRIPE_ENABLE_AUTOMATIC_TAX", "false").lower() == "true"
         self.webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+    def _has_bank_items(self, user_id: str) -> bool:
+        try:
+            rows = self.supabase.table("bank_items").select("id").eq("user_id", user_id).limit(1).execute()
+            return bool(rows.data)
+        except Exception:
+            return False
+
+    def _apply_pro(self, user_id: str, update_data: Dict[str, Any], email: Optional[str] = None) -> bool:
+        result = self.supabase.table("profiles").update(update_data).eq("user_id", user_id).execute()
+        if result.data:
+            return True
+        if not email:
+            try:
+                info = self.supabase.auth.admin.get_user_by_id(user_id)
+                email = info.user.email if info and info.user else None
+            except Exception:
+                email = None
+        inserted = self.supabase.table("profiles").insert({
+            "user_id": user_id,
+            "email": email or f"{user_id}@unknown.local",
+            "has_connected_bank": self._has_bank_items(user_id),
+            **update_data,
+        }).execute()
+        return bool(inserted.data)
+
+    async def _heal_pro_from_stripe(self, user_id: str, profile: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not self.is_configured:
+            return None
+        profile = profile or {}
+        sub = None
+        customer_id = profile.get("stripe_customer_id")
+        sub_id = profile.get("stripe_subscription_id")
+        email = profile.get("email")
+        try:
+            if sub_id:
+                retrieved = stripe.Subscription.retrieve(sub_id)
+                if retrieved and retrieved.get("status") in ("active", "trialing"):
+                    sub = retrieved
+                    customer_id = customer_id or retrieved.get("customer")
+            if sub is None and customer_id:
+                listed = stripe.Subscription.list(customer=customer_id, status="active", limit=1)
+                if listed.data:
+                    sub = listed.data[0]
+            if sub is None:
+                if not email:
+                    try:
+                        info = self.supabase.auth.admin.get_user_by_id(user_id)
+                        email = info.user.email if info and info.user else None
+                    except Exception:
+                        email = None
+                if email:
+                    for customer in stripe.Customer.list(email=email, limit=5).data:
+                        listed = stripe.Subscription.list(customer=customer.id, status="active", limit=1)
+                        if listed.data:
+                            sub = listed.data[0]
+                            customer_id = customer.id
+                            break
+        except Exception as e:
+            logger.warning(f"Stripe heal lookup failed for {user_id}: {e}")
+            return None
+        if not sub:
+            return None
+        update_data = {
+            "is_pro": True,
+            "stripe_customer_id": customer_id or sub.get("customer"),
+            "stripe_subscription_id": sub.get("id"),
+            "subscription_status": sub.get("status"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        period_end = sub.get("current_period_end")
+        if period_end:
+            update_data["subscription_current_period_end"] = datetime.fromtimestamp(
+                period_end, tz=timezone.utc
+            ).isoformat()
+        if not self._apply_pro(user_id, update_data, email=email):
+            return None
+        return {
+            "is_pro": True,
+            "subscription_status": sub.get("status"),
+            "current_period_end": update_data.get("subscription_current_period_end"),
+            "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+        }
     
     async def create_checkout_session(
         self, 
@@ -155,36 +238,31 @@ class StripeService:
                 except Exception as e:
                     logger.warning(f"Could not retrieve subscription details: {e}")
             
-            # Update the user's profile
             logger.info(f"Updating profile for user {user_id} with data: {update_data}")
-            
-            result = self.supabase.table('profiles').update(update_data).eq('user_id', user_id).execute()
-            
-            logger.info(f"Database update result: {result}")
-            
-            if result.data and len(result.data) > 0:
-                logger.info(f"✅ Successfully upgraded user {user_id} to PRO")
-                logger.info(f"Updated profile: {result.data[0]}")
-                
-                # Verify the update worked
-                verification = self.supabase.table('profiles').select('is_pro, stripe_customer_id').eq('user_id', user_id).single().execute()
-                logger.info(f"Verification check: {verification.data}")
-                
-                return True
-            else:
-                logger.error(f"❌ No rows updated for user {user_id}. Profile may not exist.")
-                
-                # Try to find the profile to debug
-                profile_check = self.supabase.table('profiles').select('*').eq('user_id', user_id).execute()
-                logger.info(f"Profile check result: {profile_check.data}")
-                
+            if not self._apply_pro(user_id, update_data, email=user_email):
+                logger.error(f"❌ Failed to apply pro status for user {user_id}")
                 return False
+            logger.info(f"✅ Successfully upgraded user {user_id} to PRO")
+            return True
                 
         except Exception as e:
             logger.error(f"❌ Error in payment success handler: {e}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
+
+    async def confirm_checkout_session(self, user_id: str, session_id: str) -> Dict[str, Any]:
+        session = stripe.checkout.Session.retrieve(session_id)
+        status = session.get("status")
+        payment_status = session.get("payment_status")
+        if status != "complete" and payment_status not in ("paid", "no_payment_required"):
+            raise ValueError("Checkout session is not complete")
+        metadata = session.get("metadata") or {}
+        if str(metadata.get("user_id") or "") != str(user_id):
+            raise ValueError("Checkout session does not belong to this user")
+        if not await self.handle_checkout_completed(session):
+            raise Exception("Failed to apply subscription")
+        return await self.get_subscription_status(user_id)
     
     async def handle_subscription_updated(self, subscription: Dict[str, Any]) -> bool:
         """Handle subscription updates with enhanced logging."""
@@ -274,18 +352,23 @@ class StripeService:
             result = (
                 self.supabase.table('profiles')
                 .select(
-                    'is_pro, subscription_status, subscription_current_period_end, cancel_at_period_end, stripe_subscription_id'
+                    'email, is_pro, subscription_status, subscription_current_period_end, cancel_at_period_end, stripe_subscription_id, stripe_customer_id'
                 )
                 .eq('user_id', user_id)
-                .single()
+                .limit(1)
                 .execute()
             )
 
-            if not result.data:
+            data = result.data[0] if result.data else None
+            if not data or not data.get("is_pro"):
+                if not data or data.get("stripe_subscription_id") or data.get("stripe_customer_id"):
+                    healed = await self._heal_pro_from_stripe(user_id, data)
+                    if healed:
+                        return healed
+            if not data:
                 logger.error(f"❌ Profile not found for user: {user_id}")
                 return {"is_pro": False, "cancel_at_period_end": False}
-            
-            data = result.data
+
             is_pro = data.get('is_pro', False)
             current_period_end = data.get('subscription_current_period_end')
             cancel_at_period_end = data.get('cancel_at_period_end', False)

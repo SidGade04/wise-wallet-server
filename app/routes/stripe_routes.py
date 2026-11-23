@@ -11,7 +11,8 @@ from ..core.auth import get_current_user
 from ..services.stripe_service import StripeService
 from ..models.stripe_models import (
     CheckoutSessionRequest, 
-    CheckoutSessionResponse, 
+    CheckoutSessionResponse,
+    ConfirmCheckoutRequest,
     SubscriptionStatus
 )
 
@@ -65,6 +66,24 @@ async def create_checkout_session(
         logger.error(f"Error creating checkout session: {str(e)}")
         import traceback
         logger.error(f"Checkout session traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/confirm-checkout", response_model=SubscriptionStatus)
+async def confirm_checkout(
+    request: ConfirmCheckoutRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    try:
+        stripe_service = get_stripe_service()
+        result = await stripe_service.confirm_checkout_session(
+            current_user["user_id"], request.session_id
+        )
+        return SubscriptionStatus(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error confirming checkout: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

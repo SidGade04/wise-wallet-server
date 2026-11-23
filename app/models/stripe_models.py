@@ -33,6 +33,10 @@ class CheckoutSessionResponse(BaseModel):
     url: str
 
 
+class ConfirmCheckoutRequest(BaseModel):
+    session_id: str
+
+
 class SubscriptionUpdateData(BaseModel):
     is_pro: bool
     stripe_customer_id: Optional[str] = None
