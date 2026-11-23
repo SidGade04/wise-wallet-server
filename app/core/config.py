@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")  # e.g. postgresql+asyncpg://user:pass@host:5432/db
 
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-4-hydrogen")
 
     # Plaid (optional during local dev)
     PLAID_CLIENT_ID: Optional[str] = os.getenv("PLAID_CLIENT_ID")

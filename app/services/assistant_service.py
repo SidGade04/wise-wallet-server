@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 LOOKBACK_DAYS = 90
 MAX_TXNS = 300
 MAX_JSON_CHARS = 80_000
-DEFAULT_MODEL = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.5-flash-lite"
+DEFAULT_MODEL = "gemini-4-hydrogen"
+FALLBACK_MODEL = "gemini-3.5-flash"
 RETRY_STATUSES = {429, 500, 503, 504}
 
 SYSTEM_PROMPT = """You are Maya, Wise Wallet's personal finance advisor. You work with this one user. You already have their Plaid transactions and balances. You give advice.
