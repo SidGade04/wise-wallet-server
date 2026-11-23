@@ -86,7 +86,7 @@ class StripeService:
             )
             
             logger.info(f"✅ Checkout session created: {session['id']}")
-            return {"sessionId": session["id"]}
+            return {"sessionId": session["id"], "url": session["url"]}
             
         except stripe.error.StripeError as e:
             logger.error(f"❌ Stripe error creating checkout session: {e}")

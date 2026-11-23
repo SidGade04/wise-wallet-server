@@ -30,6 +30,7 @@ class WebhookEvent(BaseModel):
 
 class CheckoutSessionResponse(BaseModel):
     sessionId: str
+    url: str
 
 
 class SubscriptionUpdateData(BaseModel):

@@ -261,13 +261,7 @@ class SettingsService:
                         categories_set.add(str(category_data))
             
             export_data["categories_used"] = sorted(list(categories_set))
-            
-            # Create ZIP file
-            import io
-            import zipfile
-            import json
-            from datetime import datetime
-            
+
             zip_buffer = io.BytesIO()
             
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -336,20 +330,44 @@ class SettingsService:
     async def delete_account(self, user_id: str):
         """Delete user account and all associated data"""
         try:
-            # Delete child data first if FK constraints exist
-            self.db.table("transactions").delete().eq("user_id", user_id).execute()
-            self.db.table("subscriptions").delete().eq("user_id", user_id).execute()
-            self.db.table("investments").delete().eq("user_id", user_id).execute()
-            
-            # Delete profile last
-            profile_result = self.db.table("profiles").delete().eq("user_id", user_id).execute()
-            
-            # Optional: remove auth user (if client supports admin)
+            try:
+                rows = (
+                    self.db.table("profiles")
+                    .select("stripe_subscription_id")
+                    .eq("user_id", user_id)
+                    .execute()
+                    .data
+                )
+                sub_id = rows[0].get("stripe_subscription_id") if rows else None
+                if sub_id:
+                    stripe.Subscription.cancel(sub_id)
+            except Exception as e:
+                logger.warning(f"Stripe cancel skipped for {user_id}: {e}")
+
+            # no public.subscriptions / public.investments tables — Stripe lives on profiles
+            for table in (
+                "transaction_vectors",
+                "transactions",
+                "investment_transactions",
+                "investment_holdings",
+                "accounts",
+                "bank_items",
+                "ai_insights",
+                "bank_accounts",
+                "profiles",
+            ):
+                try:
+                    self.db.table(table).delete().eq("user_id", user_id).execute()
+                except Exception as e:
+                    if getattr(e, "code", None) != "42P01" and "42P01" not in str(e):
+                        raise
+                    logger.warning(f"Skip missing table {table}")
+
             try:
                 self.db.auth.admin.delete_user(user_id)  # type: ignore[attr-defined]
             except Exception as e:
                 logger.warning(f"Failed to delete auth user {user_id}: {str(e)}")
-            
+
             logger.info(f"Account deleted for user {user_id}")
             return {"ok": True, "message": "Account deleted successfully"}
         except Exception as e:
