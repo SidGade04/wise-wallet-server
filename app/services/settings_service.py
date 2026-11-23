@@ -169,7 +169,7 @@ class SettingsService:
 
 
     # ----------------- Billing Portal -----------------
-    async def create_billing_portal(self, user_id: str) -> str:
+    async def create_billing_portal(self, user_id: str, origin: str | None = None) -> str:
         try:
             # Try to fetch stripe_customer_id from profiles
             try:
@@ -188,7 +188,7 @@ class SettingsService:
             # Create the billing portal session
             session = stripe.billing_portal.Session.create(
                 customer=customer_id,
-                return_url=f"{settings.FRONTEND_URL}/settings"
+                return_url=f"{settings.resolve_frontend_url(origin)}/settings"
             )
             
             logger.info(f"Billing portal session created for user {user_id}")

@@ -55,4 +55,25 @@ class Settings(BaseSettings):
             raise ValueError("STRIPE_SECRET_KEY must be set in prod when Stripe is enabled.")
         return v
 
+    def resolve_frontend_url(self, origin: Optional[str] = None) -> str:
+        allowed = {
+            self.FRONTEND_URL.rstrip("/"),
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "https://lemon-grass-096d3860f.6.azurestaticapps.net",
+        }
+        allowed.update(
+            o.strip().rstrip("/")
+            for o in os.getenv("CORS_ORIGINS", "").split(",")
+            if o.strip()
+        )
+        if origin:
+            origin = origin.rstrip("/")
+            if origin in allowed:
+                return origin
+        return self.FRONTEND_URL.rstrip("/")
+
 settings = Settings()

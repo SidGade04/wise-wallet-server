@@ -139,7 +139,8 @@ class StripeService:
         self, 
         plan: str, 
         user_id: str, 
-        user_email: str
+        user_email: str,
+        origin: Optional[str] = None,
     ) -> Dict[str, str]:
         """Create a Stripe checkout session."""
         if not stripe.api_key:
@@ -148,15 +149,16 @@ class StripeService:
         price_id = self.allowed_prices.get(plan)
         if not price_id:
             raise ValueError(f"Invalid plan: {plan}")
-        
-        logger.info(f"Creating checkout session for user {user_id}, plan {plan}, price {price_id}")
+
+        frontend_url = settings.resolve_frontend_url(origin)
+        logger.info(f"Creating checkout session for user {user_id}, plan {plan}, price {price_id}, return {frontend_url}")
         
         try:
             session = stripe.checkout.Session.create(
                 mode="subscription",
                 line_items=[{"price": price_id, "quantity": 1}],
-                success_url=f"{settings.FRONTEND_URL}/upgrade?success=true&session_id={{CHECKOUT_SESSION_ID}}",
-                cancel_url=f"{settings.FRONTEND_URL}/upgrade?canceled=true",
+                success_url=f"{frontend_url}/upgrade?success=true&session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{frontend_url}/upgrade?canceled=true",
                 allow_promotion_codes=True,
                 customer_email=user_email,
                 metadata={

@@ -36,6 +36,7 @@ def get_stripe_service():
 @router.post("/create-checkout-session", response_model=CheckoutSessionResponse)
 async def create_checkout_session(
     request: CheckoutSessionRequest,
+    http_request: Request,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Create a Stripe checkout session."""
@@ -53,7 +54,7 @@ async def create_checkout_session(
         
         # Create checkout session
         result = await stripe_service.create_checkout_session(
-            request.plan, user_id, user_email
+            request.plan, user_id, user_email, origin=http_request.headers.get("origin")
         )
         
         logger.info(f"Checkout session created: {result}")

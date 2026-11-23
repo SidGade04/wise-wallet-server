@@ -1,6 +1,6 @@
 # settings_routes.py - Updated with additional endpoints
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from ..core.auth import get_current_user
 
@@ -104,10 +104,12 @@ async def update_preferences(body: PreferencesUpdate, current_user=Depends(get_c
 
 # ---------- Billing Portal ----------
 @router.post("/billing/portal", response_model=PortalSessionResponse)
-async def create_billing_portal(current_user=Depends(get_current_user)):
+async def create_billing_portal(http_request: Request, current_user=Depends(get_current_user)):
     try:
         svc = get_settings_service()
-        url = await svc.create_billing_portal(current_user["user_id"])
+        url = await svc.create_billing_portal(
+            current_user["user_id"], origin=http_request.headers.get("origin")
+        )
         return PortalSessionResponse(url=url)
     except Exception as e:
         logger.error(f"Failed to create billing portal for user {current_user.get('user_id')}: {str(e)}")
